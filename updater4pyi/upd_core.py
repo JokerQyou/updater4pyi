@@ -409,47 +409,81 @@ class Updater(object):
                 logger.debug("extractloc: %r", extractloc.__dict__)
 
                 if (zipfile.is_zipfile(tmpfile.name)):
-                    # ZIP file
-                    thezipfile = zipfile.ZipFile(tmpfile.name, 'r')
+                    # PyInstaller uses a lot of symlinks, and I have not yet
+                    # found a reliable way to extract symlinks from zipfile,
+                    # curently using `unzip` command instead
+                    if sys.platform == 'darwin':
+                        # ZIP file
+                        thezipfile = zipfile.ZipFile(tmpfile.name, 'r')
 
-                    # extract the ZIP file to our directory.
+                        # extract the ZIP file to our directory.
 
-                    extractloc.findextractto(namelist=thezipfile.namelist())
-                    extractto = extractloc.extractto
+                        extractloc.findextractto(namelist=thezipfile.namelist())
+                        extractto = extractloc.extractto
 
-                    permdata = None
-                    if ('_updater4pyi_metainf.json' in thezipfile.namelist()):
-                        # adjust permissions on files.
+                        permdata = None
+                        if ('_updater4pyi_metainf.json' in thezipfile.namelist()):
+                            # adjust permissions on files.
+                            try:
+                                permdata = json.load(thezipfile.open('_updater4pyi_metainf.json'))
+                            except ValueError as e:
+                                logger.warning("Invalid JSON data in metainf file _updater4pyi_metainf.json: %s" %(str(e)))
+
                         try:
-                            permdata = json.load(thezipfile.open('_updater4pyi_metainf.json'))
-                        except ValueError as e:
-                            logger.warning("Invalid JSON data in metainf file _updater4pyi_metainf.json: %s" %(str(e)))
+                            subprocess.call([
+                                'unzip', '-qq', '-o',
+                                tmpfile.name,
+                                '-d', extractto,
+                            ])
+                            # iterate over files to extract with executable permissions set.
+                            for zinfo in thezipfile.infolist():
+                                if zinfo.filename in Updater.SPECIAL_ZIP_FILES:
+                                    continue
+                                os.chmod(os.path.join(extractto, zinfo.filename), 0755) # make executable
+                        finally:
+                            thezipfile.close()
+                    else:
+                        # ZIP file
+                        thezipfile = zipfile.ZipFile(tmpfile.name, 'r')
 
-                    # iterate over files to extract with executable permissions set.
-                    for zinfo in thezipfile.infolist():
-                        if zinfo.filename in Updater.SPECIAL_ZIP_FILES:
-                            continue
-                        thezipfile.extract(zinfo, extractto)
-                        os.chmod(os.path.join(extractto, zinfo.filename), 0755) # make executable
-                    thezipfile.close()
+                        # extract the ZIP file to our directory.
 
-                    # override some permissions with a special metainfo file.
-                    if permdata and 'permissions' in permdata:
-                        for (pattern,perm) in permdata['permissions'].iteritems():
-                            logger.debug("pattern: %s to perms=%s" %(pattern, perm))
-                            # int(s, 0) converts s to int, parsing prefixes '0' (octal), '0x' (hex)
-                            # cf. http://stackoverflow.com/questions/604240/
-                            iperm = int(perm,0);
-                            for it in glob.iglob(os.path.join(filetoupdate.fn, pattern)):
-                                logger.debug("Changing permissions of %s to %#o" %(it, iperm))
-                                try:
-                                    os.chmod(it, iperm)
-                                except OSError:
-                                    logger.warning("Failed to set permissions to file %s. Ignoring." %(it));
-                                    pass
+                        extractloc.findextractto(namelist=thezipfile.namelist())
+                        extractto = extractloc.extractto
 
-                    # remove the temporary downloaded file.
-                    os.unlink(tmpfile.name)
+                        permdata = None
+                        if ('_updater4pyi_metainf.json' in thezipfile.namelist()):
+                            # adjust permissions on files.
+                            try:
+                                permdata = json.load(thezipfile.open('_updater4pyi_metainf.json'))
+                            except ValueError as e:
+                                logger.warning("Invalid JSON data in metainf file _updater4pyi_metainf.json: %s" %(str(e)))
+
+                        # iterate over files to extract with executable permissions set.
+                        for zinfo in thezipfile.infolist():
+                            if zinfo.filename in Updater.SPECIAL_ZIP_FILES:
+                                continue
+                            thezipfile.extract(zinfo, extractto)
+                            os.chmod(os.path.join(extractto, zinfo.filename), 0755) # make executable
+                        thezipfile.close()
+
+                        # override some permissions with a special metainfo file.
+                        if permdata and 'permissions' in permdata:
+                            for (pattern,perm) in permdata['permissions'].iteritems():
+                                logger.debug("pattern: %s to perms=%s" %(pattern, perm))
+                                # int(s, 0) converts s to int, parsing prefixes '0' (octal), '0x' (hex)
+                                # cf. http://stackoverflow.com/questions/604240/
+                                iperm = int(perm,0);
+                                for it in glob.iglob(os.path.join(filetoupdate.fn, pattern)):
+                                    logger.debug("Changing permissions of %s to %#o" %(it, iperm))
+                                    try:
+                                        os.chmod(it, iperm)
+                                    except OSError:
+                                        logger.warning("Failed to set permissions to file %s. Ignoring." %(it));
+                                        pass
+
+                        # remove the temporary downloaded file.
+                        os.unlink(tmpfile.name)
 
                 elif tarfile.is_tarfile(tmpfile.name):
                     # TAR[/GZ/BZIP2] file
