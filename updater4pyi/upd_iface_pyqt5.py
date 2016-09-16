@@ -38,16 +38,12 @@ from . import upd_iface
 from .upd_log import logger
 
 
-
-
 class UpdatePyQt5Interface(QtCore.QObject, upd_iface.UpdateGenericGuiInterface):
 
     def __init__(self, updater, parent=None, **kwargs):
-        self.timer = None
-
-        QtCore.QObject.__init__(self, parent=parent)
+        super(UpdatePyQt5Interface, self).__init__(parent=parent, updater=updater, **kwargs)
         # super doesn't propagate out of the Qt multiple inheritance...
-        upd_iface.UpdateGenericGuiInterface.__init__(self, updater, **kwargs)
+        self.timer = None
 
     def get_settings_object(self):
         """
@@ -62,7 +58,7 @@ class UpdatePyQt5Interface(QtCore.QObject, upd_iface.UpdateGenericGuiInterface):
         d = {}
         for key in keylist:
             if settings.contains(key):
-                d[key] = settings.value(key).toPyObject()
+                d[key] = settings.value(key)
 
         logger.debug("load_settings: read settings: %r", d)
         return d
