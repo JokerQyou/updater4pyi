@@ -1,4 +1,5 @@
-*.pyc
-*.pyo
+*.py[cod]
 updater4pyi.egg-info
 MANIFEST
+build
+dist
